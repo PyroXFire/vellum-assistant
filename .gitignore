@@ -154,3 +154,6 @@ evals/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Codename-Localhost working notes (not part of the fork)
+.cl-notes/

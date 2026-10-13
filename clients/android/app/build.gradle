@@ -58,7 +58,14 @@ android {
     namespace = "ai.vellum.assistant"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "ai.vellum.assistant"
+        // Codename-Localhost fork: distinct install identity, so this build
+        // sits alongside an upstream Vellum install rather than replacing it.
+        // The `namespace` above stays `ai.vellum.assistant` on purpose — it is
+        // the Java package the checked-in sources under
+        // `src/main/java/ai/vellum/assistant/` declare, and the manifest's
+        // relative `.MainActivity` resolves against it. Only the installed
+        // application id needs to change to rebrand the app.
+        applicationId "ai.codenamelocalhost.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode versionCodeInput.toInteger()

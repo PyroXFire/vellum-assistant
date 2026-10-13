@@ -1,4 +1,5 @@
 import {
+  approveRemoteWebPairingChallenge,
   checkRemoteWebPairingChallengeCapacity,
   createRemoteWebPairingChallenge,
   type RemoteWebPairingChallengeCapacityLimit,
@@ -147,6 +148,28 @@ export async function handleCreateRemoteWebPairingChallenge(
     userAgent: req.headers.get("user-agent"),
     viaEdgeProxy: arrivedViaTrustedEdgeProxy,
   });
+
+  // Codename-Localhost: pre-approve challenges minted through our own tunnel
+  // edge.
+  //
+  // Upstream treats a minted code as pending until a human approves it on the
+  // host, which is the right second factor for an ingress URL that may be
+  // reachable from the public internet (ngrok, Cloudflare). This fork only ever
+  // fronts the edge with a tailnet-only tunnel, so `arrivedViaTrustedEdgeProxy`
+  // (unspoofable edge marker AND a loopback raw peer) already proves the caller
+  // reached us over the operator's own Tailscale tailnet — a network that only
+  // the operator's own devices can join. Re-asking for a code here would not add
+  // a factor; it would just re-ask a question the tailnet already answered, and
+  // it strands the phone on a pairing screen it cannot dismiss by itself.
+  //
+  // The approval is host-side and in-process (no network round trip): the
+  // device's own poll of `/v1/remote-web/pairing-token` observes `approved` and
+  // completes the exchange unchanged. Direct loopback mints (`vellum pair`) and
+  // every non-edge caller are unaffected, and the loopback guard above still
+  // runs for them.
+  if (arrivedViaTrustedEdgeProxy) {
+    approveRemoteWebPairingChallenge(challenge.userCode);
+  }
 
   return Response.json(challenge, {
     headers: { "Cache-Control": "no-store" },

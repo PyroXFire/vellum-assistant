@@ -4,7 +4,8 @@ import { KeyboardResize, KeyboardStyle } from "@capacitor/keyboard";
 // node-based TS config loader transpiles one file at a time and cannot
 // resolve the index's `.js`-suffixed runtime re-exports, while the seeds
 // module is self-contained (type-only imports) and loads cleanly.
-import { cloudAssistantHubUrl } from "@vellumai/environments/seeds";
+// NOTE: Codename-Localhost no longer imports `cloudAssistantHubUrl` — the
+// baked origin is the operator's own tailnet host, not a Vellum Cloud hub.
 
 // `server.url` is baked into native Capacitor config by `cap sync`, so
 // whatever URL resolves here at sync time is what the archived mobile build
@@ -14,9 +15,27 @@ import { cloudAssistantHubUrl } from "@vellumai/environments/seeds";
 // The environment-to-hub mapping (including the deliberate `/assistant`
 // suffix) is shared with the CLI's remote-web edge via
 // `@vellumai/environments`; see `cloudAssistantHubUrl` for the rationale.
+// Upstream resolved the baked `server.url` through that mapping. This fork
+// replaces it with a single self-hosted origin — see `CL_DEFAULT_SERVER_URL`
+// below — so the `@vellumai/environments/seeds` import is dropped here.
 const env = process.env.VELLUM_ENVIRONMENT ?? "dev";
 
-const ENV_SERVER_URL = cloudAssistantHubUrl(env);
+// ---------------------------------------------------------------------------
+// Codename-Localhost fork: default origin of the self-hosted assistant
+// ---------------------------------------------------------------------------
+// Upstream bakes the Vellum Cloud hub for the selected environment. This fork
+// targets one self-hosted assistant reachable over the operator's own
+// Tailscale tailnet, so that origin is the fallback when `VELLUM_SERVER_URL` is
+// unset — a plain `cap sync` on a fresh checkout then bakes a working URL
+// instead of pointing the APK at vellum.ai.
+//
+// `VELLUM_SERVER_URL` still takes precedence, so pointing a build at a
+// different host needs no edit here. The in-app server chooser
+// (`SelfHostedServer`) overrides the baked value at runtime on top of both.
+//
+// The `tailscale serve` front end that terminates TLS for this origin must be
+// running for the APK to load anything; see the README's "Connectivity" note.
+const CL_DEFAULT_SERVER_URL = "https://gaming-boi.tailc343dd.ts.net";
 
 // `VELLUM_SERVER_URL` points the shell at a self-hosted assistant's own HTTPS
 // origin, taking precedence over the environment-derived Vellum Cloud URL. It
@@ -26,7 +45,7 @@ const ENV_SERVER_URL = cloudAssistantHubUrl(env);
 function resolveServerUrl(): string {
   const override = process.env.VELLUM_SERVER_URL?.trim();
   if (!override) {
-    return ENV_SERVER_URL;
+    return CL_DEFAULT_SERVER_URL;
   }
 
   let parsed: URL;
@@ -59,8 +78,8 @@ const config: CapacitorConfig = {
   // NOTE: Capacitor's CLI requires Java-package form here because Android
   // uses this value as its application namespace. The real iOS bundle IDs are
   // set via `PRODUCT_BUNDLE_IDENTIFIER` in the Xcode project.
-  appId: "ai.vellum.assistant",
-  appName: "Vellum",
+  appId: "ai.codenamelocalhost.app",
+  appName: "Codename Localhost",
   webDir: "capacitor-shell",
   server: {
     url: SERVER_URL,

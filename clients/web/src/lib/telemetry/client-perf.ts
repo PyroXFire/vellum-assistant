@@ -1,4 +1,5 @@
 import { telemetryIngestPost } from "@/generated/daemon/sdk.gen";
+import { CL_TELEMETRY_ENABLED } from "@/lib/fork-mode";
 import { captureError } from "@/lib/sentry/capture-error";
 import type { TelemetryJsonValueWritable } from "@/generated/daemon/types.gen";
 import { readAnalyticsConsent } from "@/lib/telemetry/consent";
@@ -109,6 +110,15 @@ export function sendClientWatchdogEvent(event: {
   assistantId?: string;
 }): void {
   if (typeof window === "undefined") {
+    return;
+  }
+  // Codename-Localhost: this is the shared transport for the whole `client_*`
+  // family — `client-perf` (list drain, switch, resume), `boot-telemetry`
+  // (`flushBootTelemetry` calls in here), and everything riding on them. Gating
+  // it here retires the family in one place instead of threading the switch
+  // through each emitter's consent check, and it holds regardless of what
+  // `readAnalyticsConsent()` would otherwise answer.
+  if (!CL_TELEMETRY_ENABLED) {
     return;
   }
   try {

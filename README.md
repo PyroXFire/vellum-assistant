@@ -1,3 +1,121 @@
+<h1 align="center">Codename-Localhost</h1>
+
+<p align="center"><b>A no-login, no-telemetry, local-model-only build of the Vellum Assistant.</b><br>
+Your machine runs the assistant. Your phone talks to it over your own network. Nothing signs in anywhere, and nothing reports anywhere.</p>
+
+---
+
+## What Codename-Localhost is
+
+**Codename-Localhost (CL) is a fork of [vellum-ai/vellum-assistant](https://github.com/vellum-ai/vellum-assistant)** (MIT), made so the
+product can be used the way it is advertised — self-hosted, with your own local
+model — without a Vellum Cloud account being the price of admission.
+
+Upstream ships a login gate and two outbound reporting channels. CL removes all
+three:
+
+| Removed | How |
+| --- | --- |
+| **Vellum account login / signup** | Nothing in CL ever calls the platform API. The web client ships in local mode with the platform disabled (`VITE_PLATFORM_MODE=false`, `VITE_VELLUM_DISABLE_PLATFORM=true`), so `isLocalClient()` and `isPlatformDisabled()` are both true at runtime and the router guard admits a local-only user instead of redirecting to `/account/login`. The gateway never receives a platform token, so `arePlatformFeaturesEnabled()` is false and platform-backed paths no-op rather than fail. |
+| **Device pairing screen** | Requests that arrive *through our own tunnel edge* are pre-approved. See [Pairing](#pairing) below. |
+| **Crash reporting (Sentry)** | `initSentry()` returns before `Sentry.init()`; no DSN is baked into the bundle. |
+| **Product / funnel analytics** | `postTelemetryEvents()` returns before sending, and the shared `client_*` transport (`sendClientWatchdogEvent`) returns before sending, which retires the boot-timing, perf, switch and resume families in one place. |
+| **Server-side usage reporting** | `usage-telemetry-reporter` short-circuits to `"disabled"` whenever platform features are off, so the daemon's local telemetry outbox is never flushed upstream. |
+
+The off-switch for the web client is a single constant,
+[`clients/web/src/lib/fork-mode.ts`](clients/web/src/lib/fork-mode.ts) →
+`CL_TELEMETRY_ENABLED = false`. It is deliberately **not** driven by
+build-time env vars: a fork that silently resumes reporting because someone
+rebuilt without the right `VITE_*` set is worse than one that cannot report at
+all. Setting it back to `true` restores upstream behaviour for every channel.
+
+### Pairing
+
+Upstream mints a pairing code and waits for a human to approve it on the host.
+That is the right second factor for an ingress URL that may be reachable from
+the public internet (ngrok, Cloudflare). CL only ever fronts the edge with a
+**tailnet-only** tunnel, and the gateway already tracks whether a request
+arrived through that edge (`arrivedViaTrustedEdgeProxy` = unspoofable edge
+marker **and** a loopback raw peer). Reaching the edge therefore already proves
+the caller is on a network only the operator's own devices can join, so
+[`remote-web-pairing-challenge.ts`](gateway/src/http/routes/remote-web-pairing-challenge.ts)
+approves those challenges in-process at creation. The device's own poll of
+`/v1/remote-web/pairing-token` observes `approved` and completes the exchange
+unchanged — the phone goes straight to chat.
+
+Direct loopback mints (`vellum pair`) and every non-edge caller are unaffected,
+and the loopback guard still runs for them.
+
+### The Android app
+
+The Android app is a thin Capacitor WebView shell — it bundles no web assets and
+loads the SPA from `server.url` at runtime. CL rebrands it so it can sit
+alongside an upstream install on the same phone:
+
+- application id **`ai.codenamelocalhost.app`** (upstream: `ai.vellum.assistant`)
+- display name **"Codename Localhost"** in every locale
+- baked origin = your own assistant's HTTPS origin, not a Vellum Cloud hub
+
+Because the shell loads the live SPA over the network, **web changes do not
+require an APK rebuild** — only changes to `clients/web/capacitor.config.ts` do.
+
+---
+
+## Verified working configuration
+
+The reference deployment this fork was built and tested against:
+
+| Piece | Value |
+| --- | --- |
+| Assistant | `cl-localhost`, hatched locally — daemon `:7821`, gateway `:7830` |
+| Memory | Qdrant `:6333`, embeddings `Xenova/bge-small-en-v1.5` (local) |
+| Model server | `llama-server` (llama.cpp) on `0.0.0.0:5001` |
+| Model | `Goetia-26B-A4B-v1.7.i1-Q6_K.gguf`, 64k ctx |
+| Ingress | `vellum tunnel --provider tailscale` → nginx edge `127.0.0.1:7840` |
+| Public origin | `https://gaming-boi.tailc343dd.ts.net` (tailnet only) |
+
+The assistant is pointed at the local model through the inference layer, not by
+patching a URL:
+
+```
+connection  llama-local      provider=openai-compatible  auth=none
+            base_url         http://127.0.0.1:5001/v1
+profile     local-llama      provider_connection=llama-local
+            model            .../Goetia-26B-A4B-v1.7.i1-Q6_K.gguf
+llm.activeProfile            local-llama
+```
+
+`openai-compatible` cannot be a `llm.defaultProvider` — the schema excludes
+endpoint-supplied providers because they have no code-resolvable default
+profile — so the local model is selected as an **active profile** instead.
+
+End-to-end check that never touches a cloud provider:
+
+```console
+$ vellum message "Reply with exactly: LOCAL MODEL ONLINE"
+Message accepted
+# → assistant replied "LOCAL MODEL ONLINE", generated by llama-server
+```
+
+### A note on rebuilding the SPA
+
+The nginx edge **snapshots `index.html`** into
+`<workspace>/data/ingress/assistant-index.html` when the edge starts, and serves
+that copy at `/assistant/`. If you rebuild `clients/web/dist` with the edge
+running, the served shell keeps pointing at the old asset hashes and the app
+fails to boot. Restart the edge after a web rebuild:
+
+```console
+$ kill "$(cat <workspace>/data/ingress/nginx.pid)"
+$ vellum tunnel cl-localhost --provider tailscale -d
+```
+
+---
+
+<p align="center"><i>Everything below this line is upstream Vellum Assistant documentation, kept for reference.</i></p>
+
+---
+
 <p align="center">
   <img src="assets/banner.png" alt="Vellum Assistant" width="100%">
 </p>

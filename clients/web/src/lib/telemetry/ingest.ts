@@ -1,3 +1,4 @@
+import { CL_TELEMETRY_ENABLED } from "@/lib/fork-mode";
 import { telemetryIngestCreate } from "@/generated/api/sdk.gen";
 import { captureError } from "@/lib/sentry/capture-error";
 
@@ -48,6 +49,20 @@ const EXPECTED_DROP_REASONS = new Set(["analytics_opt_out"]);
  * calling, because the funnels read consent from different signals.
  */
 export function postTelemetryEvents(events: readonly object[]): void {
+  // Codename-Localhost fork: product and funnel analytics are permanently off.
+  //
+  // Upstream posts these events to the platform's `/v1/telemetry/ingest/`
+  // endpoint. A self-hosted build has no platform to report to and must not
+  // send conversation-adjacent funnel data anywhere off the box, so the
+  // transport is disabled at the single choke point every caller funnels
+  // through. Callers keep their own consent checks; those simply stop
+  // mattering here.
+  //
+  // Flip the flag in `lib/fork-mode.ts` to restore upstream behavior.
+  if (!CL_TELEMETRY_ENABLED) {
+    return;
+  }
+
   void telemetryIngestCreate({
     body: {
       device_id: getClientId(),

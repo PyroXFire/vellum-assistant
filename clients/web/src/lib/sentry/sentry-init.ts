@@ -1,3 +1,4 @@
+import { CL_TELEMETRY_ENABLED } from "@/lib/fork-mode";
 import { Capacitor } from "@capacitor/core";
 import type { BrowserOptions } from "@sentry/react";
 
@@ -208,6 +209,22 @@ const options: BrowserOptions = {
  * matches.
  */
 export function initSentry(): void {
+  // Codename-Localhost fork: diagnostics reporting is permanently off.
+  //
+  // Upstream initializes a Sentry client here (see `resolveDsn` above for the
+  // per-host DSN set) and syncs a consent-gated reporting flag to the Electron
+  // main process. A self-hosted, local-model build must not ship crash reports
+  // and diagnostics to a third party, so no client is ever created. The SDK is
+  // inert without one, so `captureError()` and the rest of `lib/sentry/*` stay
+  // safe to call — they simply become no-ops.
+  //
+  // Guarded on a constant rather than on the DSN being absent: a rebuild that
+  // somehow carried a DSN still cannot report. Flip the flag in
+  // `lib/fork-mode.ts` to restore upstream behavior.
+  if (!CL_TELEMETRY_ENABLED) {
+    return;
+  }
+
   // Resolve host-detected values at init time (post host-detection), not at
   // module load. `client_os` tags every event with the OS surface — the web
   // DSN otherwise can't distinguish mobile-web (iOS/Android phone browsers)
