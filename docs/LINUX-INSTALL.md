@@ -10,6 +10,13 @@ See the [README](../README.md) for what the fork removes and why.
 **Tested on:** Debian/Ubuntu-family x86_64. The reference deployment this guide
 was written against is in the README's "Verified working configuration" table.
 
+> **Convention used throughout.** The assistant instance is named
+> `cl-localhost` and lives at
+> `~/.local/share/vellum/assistants/cl-localhost/.vellum/workspace`. That name
+> appears in several commands and paths below. Substitute your own if you hatch
+> under a different `--name` — the directory layout is
+> `~/.local/share/vellum/assistants/<name>/.vellum/workspace`.
+
 ---
 
 ## 0. What you end up with
@@ -173,15 +180,26 @@ Easiest is the daemon API, using the assistant's own token:
 ```console
 TOK=$(python3 -c "import json;print(json.load(open('$HOME/.config/vellum/assistants/cl-localhost/guardian-token.json'))['accessToken'])")
 
-curl -sS -X POST http://127.0.0.1:7821/v1/inference/connections \
+curl -sS -X POST http://127.0.0.1:7821/v1/inference/provider-connections \
   -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
   -d '{
         "name": "llama-local",
         "provider": "openai-compatible",
         "auth": {"type": "none"},
-        "base_url": "http://127.0.0.1:5001/v1",
-        "models": [{"id": "local", "displayName": "Local model"}]
+        "base_url": "http://127.0.0.1:5001/v1"
       }'
+```
+
+Note the path: **`inference/provider-connections`**, not `inference/connections`.
+`auth: {"type": "none"}` is correct for a keyless local server. A 409 means a
+connection with that name already exists — use PATCH on
+`inference/provider-connections/llama-local` instead, or pick a new name.
+
+Check what you registered:
+
+```console
+curl -sS -H "Authorization: Bearer $TOK" \
+  http://127.0.0.1:7821/v1/inference/provider-connections
 ```
 
 The daemon probes the endpoint on creation and reports whether it reached it.
@@ -228,6 +246,17 @@ definition in `<workspace>/config.json`:
   }
 }
 ```
+
+> **The `model` string must match what your server reports.** The profile's
+> `model` value has to equal the `id` returned by your server's `/v1/models`.
+> llama.cpp reports the model *path* it was launched with, so copy it verbatim:
+>
+> ```console
+> curl -sS http://127.0.0.1:5001/v1/models | python3 -c "import sys,json;print([m['id'] for m in json.load(sys.stdin)['data']])"
+> ```
+>
+> A mismatch here produces a request that the server rejects — often as an
+> opaque error rather than a clear "unknown model".
 
 ### 4c. Why `advisorProfile` matters more than it looks
 
@@ -404,7 +433,8 @@ or the app id) do.
 Check what got baked in:
 
 ```console
-~/Android/Sdk/build-tools/36.0.0/aapt2 dump badging \
+AAPT=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
+"$AAPT" dump badging \
   app/build/outputs/apk/production/debug/app-production-debug.apk \
   | grep -E '^package|application-label'
 ```
