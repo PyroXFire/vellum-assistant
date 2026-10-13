@@ -410,6 +410,33 @@ Those two hashes must match.
 
 ## 8. Build and deliver the Android app
 
+### Point the app at *your* origin first
+
+The Android app is a thin Capacitor shell: it bundles no web assets and loads
+the SPA from a single URL baked in at build time. That URL lives in
+`clients/web/capacitor.config.ts` under `server.url`, and **the shipped value is
+the fork author's own tailnet node** — it will not work on your machine.
+
+Set it to your own tunnel origin before building:
+
+```console
+cd ~/codename-localhost/clients/web
+node -e "console.log(require('./capacitor.config.ts').default?.server ?? 'see file')" 2>/dev/null
+tailscale status --json | python3 -c "import sys,json;print(json.load(sys.stdin)['Self']['DNSName'].rstrip('.'))"
+```
+
+Then edit `server.url` in `clients/web/capacitor.config.ts` to
+`https://<that-name>.ts.net` and save. Keep `cleartext: false` — the tunnel is
+HTTPS; a plain-HTTP origin will land you on the pairing screen instead of the app.
+
+> **The app id and the app name are also yours to change.** They default to
+> `ai.codenamelocalhost.app` / "Codename Localhost". If you build more than one
+> CL-derived app, give each a distinct `appId` so they don't collide on your phone.
+
+Changing anything in `capacitor.config.ts` **does** require an APK rebuild — the
+value is compiled into the APK's `assets/capacitor.config.json`. Web-client
+changes alone do not.
+
 ### Build the APK
 
 ```console
