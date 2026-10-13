@@ -152,6 +152,64 @@ bun run cli/src/index.ts ps
 You should see the daemon, the gateway, the credential-executor, the schedule
 and monitoring workers, and Qdrant.
 
+### The `assistant` CLI is not on PATH in source installs
+
+Several first-party skills drive features by shelling out to the `assistant`
+CLI. The avatar skill is the common one:
+
+```console
+assistant avatar character update --body-shape cloud --eye-style goofy --color teal
+```
+
+In a **packaged desktop app** that command works: the app bundle ships a
+compiled `assistant` binary next to the CLI and writes a wrapper at
+`<workspace>/bin/assistant` on every daemon wake. In a **source install**
+(`bun run cli/src/index.ts ...`) that wrapper is deliberately not written, and
+there is no compiled binary to point at. The skill's call then fails with:
+
+```
+exitCode: 127
+```
+
+and the feature silently does nothing. For the avatar you see "it's looking for
+an assistant program", or the avatar never changes. Two things are missing: the
+wrapper itself, and a `<workspace>/bin` entry on the PATH the agent's shell tool
+receives.
+
+Create both:
+
+```console
+WS=~/.local/share/vellum/assistants/cl-localhost/.vellum/workspace
+PROT=~/.local/share/vellum/assistants/cl-localhost/.vellum/protected
+REPO=~/codename-localhost
+
+mkdir -p "$WS/bin" ~/.local/bin
+cat > "$WS/bin/assistant" <<EOF
+#!/bin/sh
+export PATH="\$HOME/.bun/bin:\$PATH"
+export VELLUM_WORKSPACE_DIR="$WS"
+export CREDENTIAL_SECURITY_DIR="$PROT"
+export GATEWAY_SECURITY_DIR="$PROT"
+export VELLUM_ENVIRONMENT=local VELLUM_CLOUD=local VELLUM_DEV=1
+exec bun run "$REPO/assistant/src/index.ts" "\$@"
+EOF
+chmod 755 "$WS/bin/assistant"
+ln -sf "$WS/bin/assistant" ~/.local/bin/assistant
+```
+
+Verify:
+
+```console
+assistant avatar get
+```
+
+A healthy answer is either the current avatar or "No avatar is currently set".
+Exit 127 means the shim is missing or not executable.
+
+> **The shim lives in instance state.** A workspace migration or a re-hatch can
+> remove `<workspace>/bin`, leaving the `~/.local/bin/assistant` symlink
+> dangling. Re-create it if skill commands start returning 127 again.
+
 ### If you ever need to restart it
 
 ```console
@@ -532,6 +590,11 @@ Any `callSite:` you see there needs an explicit profile.
 ### Blank app / `net::ERR_ABORTED` on the main chunk
 
 The edge is serving a stale `index.html`. See §7.
+
+### Avatar or skill commands fail with `assistant: command not found`
+
+Exit code 127 from a skill that calls the `assistant` CLI. Source installs do
+not get the wrapper the desktop app writes. See the shim instructions in §3.
 
 ### `Access denied: serve config denied`
 
