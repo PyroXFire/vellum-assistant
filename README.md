@@ -61,6 +61,12 @@ require an APK rebuild** — only changes to `clients/web/capacitor.config.ts` d
 
 ---
 
+## Installing
+
+Step-by-step Linux setup — prerequisites, hatching, pointing the assistant at a
+local model, opening the tunnel, and building the Android app — is in
+**[docs/LINUX-INSTALL.md](docs/LINUX-INSTALL.md)**.
+
 ## Verified working configuration
 
 The reference deployment this fork was built and tested against:
